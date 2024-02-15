@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Jump Mario</title>
+  <meta charset="UTF-8">
+  <style>
+  html, body {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    background: black url("backgrouds.png") no-repeat scroll center;
+    background-size: cover;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+  }
+
+  canvas {
+    border: 15px solid green;
+    display: none; /* Hide canvas by default */
+  }
+
+  #gameOver {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 24px;
+    font-weight: bold;
+    color: red;
+    display: none; /* Hide Game Over message by default */
+  }
+
+  #score {
+    color: white;
+    width : 200px;
+    height: 30px;
+    font-size: 24px;
+    position: absolute;
+    top: 20px;
+    left: 10px;
+    background-color: teal;
+    padding: 5px 10px;
+    border-radius: 5px;
+    display: none; /* Hide Scoreboard by default */
+    z-index: 1; /* Ensure score is above canvas */
+  }
+
+  #playAgain {
+    position: absolute;
+    top: 60%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 24px;
+    font-weight: bold;
+    color: whitesmoke;
+    cursor: pointer;
+    display: none; /* Hide Play Again button by default */
+  }
+
+  #levelDisplay {
+    width : 200px;
+    height: 30px;
+
+    color: white;
+    font-size: 24px;
+    position: absolute;
+    top: 20px;
+    right: 10px;
+    background-color: teal;
+    padding: 5px 10px;
+    border-radius: 5px;
+    display: none; /* Hide Level display by default */
+    z-index: 1; /* Ensure level display is above canvas */
+  }
+
+  .gameButton {
+  margin:20px;
+  width: 180px;
+  font-size: 18px;
+  font-weight: bold;
+  color: white;
+  background-color: teal;
+  box-shadow: 0 0 0 10px black;
+  padding: 10px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.3s ease; /* Add transition effect */
+ 
+}
+
+/* Hover effect */
+.gameButton:hover {
+  box-shadow: 0 0 0 30px white;
+  background-color: tomato; /* Change background color on hover */
+}
+  /* CSS for the modal */
+  .modal {
+    display: none;
+    position: fixed;
+    z-index: 1;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgb(0,0,0);
+    background-color: rgba(0,0,0,0.9);
+  }
+
+  .modal-content {
+
+    background:  url("backgrouds.png") no-repeat scroll center;
+    background-size: cover;
+    margin: 10% auto;
+    padding: 20px;
+    border: 1px solid #888;
+    width: 80%;
+  }
+
+  .close {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+  }
+
+  .close:hover,
+  .close:focus {
+    color: black;
+    text-decoration: none;
+    cursor: pointer;
+  }
+ .gameTittle h1{
+    font-size: 80px;
+  }
+  </style>
+</head>
+<body>
+
+<div class="gameButtons">
+  <div class="gameTittle">
+    <h1>Jump Mario</h1>
+  </div>
+  <button class="gameButton" id="rulesButton">Game Rules</button>
+  <button class="gameButton" id="playGameButton">Play Game</button>
+</div>
+
+<audio id="jumpSound" src="jumpSound.mp3"></audio>
+<audio id="gameOverSound" src="game_over.mp3"></audio>
+<canvas width="600" height="600" id="game"></canvas>
+<div id="score">Score: 0</div>
+<div id="gameOver">Game Over!</div>
+<div id="playAgain">Play Again</div>
+<div id="levelDisplay">Level: 1</div>
+
+<!-- Rules modal -->
+<div id="rulesModal" class="modal">
+  <div class="modal-content">
+    <span class="close">&times;</span>
+    <h2>Game Rules</h2>
+    <p>1. Use the left and right arrow keys to move the doodle jumper.</p>
+    <p>2. Jump on platforms to increase your score.</p>
+    <p>3. Don't let the doodle fall below the screen.</p>
+    <p>Enjoy the game!</p>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('game');
+const context = canvas.getContext('2d');
+const scoreDisplay = document.getElementById('score');
+const gameOverDiv = document.getElementById('gameOver');
+const playAgainDiv = document.getElementById('playAgain');
+const jumpSound = document.getElementById('jumpSound');
+const gameOverSound = document.getElementById('gameOverSound');
+const rulesButton = document.getElementById('rulesButton');
+const playGameButton = document.getElementById('playGameButton');
+const rulesModal = document.getElementById('rulesModal');
+const closeBtn = document.querySelector('.close');
+const levelDisplay = document.getElementById('levelDisplay');
+
+// width and height of each platform and where platforms start
+const platformWidth = 65;
+const platformHeight = 20;
+const platformStart = canvas.height - 50;
+
+// player physics
+const gravity = 0.33;
+const drag = 0.3;
+const bounceVelocity = -12.5;
+
+// minimum and maximum vertical space between each platform
+let minPlatformSpace = 15;
+let maxPlatformSpace = 20;
+
+// information about each platform. the first platform starts in the
+// bottom middle of the screen
+let platforms = [{
+  x: canvas.width / 2 - platformWidth / 2,
+  y: platformStart
+}];
+
+// get a random number between the min (inclusive) and max (exclusive)
+function random(min, max) {
+  return Math.random() * (max - min) + min;
+}
+
+// fill the initial screen with platforms
+let y = platformStart;
+while (y > 0) {
+  // the next platform can be placed above the previous one with a space
+  // somewhere between the min and max space
+  y -= platformHeight + random(minPlatformSpace, maxPlatformSpace);
+
+  // a platform can be placed anywhere 25px from the left edge of the canvas
+  // and 25px from the right edge of the canvas (taking into account platform
+  // width).
+  // however the first few platforms cannot be placed in the center so
+  // that the player will bounce up and down without going up the screen
+  // until they are ready to move
+  let x;
+  do {
+    x = random(25, canvas.width - 25 - platformWidth);
+  } while (
+    y > canvas.height / 2 &&
+    x > canvas.width / 2 - platformWidth * 1.5 &&
+    x < canvas.width / 2 + platformWidth / 2
+  );
+
+  platforms.push({ x, y });
+}
+
+// the doodle jumper
+const doodle = {
+  width: 100,
+  height: 100,
+  x: canvas.width / 2 - 20,
+  y: platformStart - 100,
+
+  // velocity
+  dx: 0,
+  dy: 0
+};
+
+// the doodle jumper image
+const doodleImage = new Image();
+doodleImage.onload = function() {
+  // keep track of player direction and actions
+  let keyLeft = false;
+  let keyRight = false;
+  let prevDoodleY = doodle.y;
+  let gameRunning = false; // Game is not running initially
+  let score = 0;
+  let level = 1;
+
+  // game loop
+  function loop() {
+    if (!gameRunning) return; // Stop the loop if game over
+    requestAnimationFrame(loop);
+    context.clearRect(0,0,canvas.width,canvas.height);
+
+    // apply gravity to doodle
+    doodle.dy += gravity;
+
+    // if doodle reaches the middle of the screen, move the platforms down
+    // instead of doodle up to make it look like doodle is going up
+    if (doodle.y < canvas.height / 2 && doodle.dy < 0) {
+      platforms.forEach(function(platform) {
+        platform.y += -doodle.dy;
+      });
+
+      // add more platforms to the top of the screen as doodle moves up
+      while (platforms[platforms.length - 1].y > 0) {
+        platforms.push({
+          x: random(25, canvas.width - 25 - platformWidth),
+          y: platforms[platforms.length - 1].y - (platformHeight + random(minPlatformSpace, maxPlatformSpace))
+        })
+
+        // add a bit to the min/max platform space as the player goes up
+        minPlatformSpace += 0.5;
+        maxPlatformSpace += 0.5;
+
+        // cap max space
+        maxPlatformSpace = Math.min(maxPlatformSpace, canvas.height / 2);
+      }
+    }
+    else {
+      doodle.y += doodle.dy;
+    }
+
+    // handle left and right movement
+    if (keyLeft) {
+      doodle.dx = -5;
+    } else if (keyRight) {
+      doodle.dx = 5;
+    } else {
+      doodle.dx = 0;
+    }
+
+    // only apply drag to horizontal movement if key is not pressed
+    if (!keyLeft && !keyRight) {
+      doodle.dx *= drag;
+    }
+
+    doodle.x += doodle.dx;
+
+    // make doodle wrap the screen
+    if (doodle.x + doodle.width < 0) {
+      doodle.x = canvas.width;
+    }
+    else if (doodle.x > canvas.width) {
+      doodle.x = -doodle.width;
+    }
+
+    // draw platforms
+    context.fillStyle = 'green';
+    platforms.forEach(function(platform) {
+      context.fillRect(platform.x, platform.y, platformWidth, platformHeight);
+
+      // make doodle jump if it collides with a platform from above
+      if (
+        // doodle is falling
+        doodle.dy > 0 &&
+
+        // doodle was previous above the platform
+        prevDoodleY + doodle.height <= platform.y &&
+
+        // doodle collides with platform
+        // (Axis Aligned Bounding Box [AABB] collision check)
+        doodle.x < platform.x + platformWidth &&
+        doodle.x + doodle.width > platform.x &&
+        doodle.y < platform.y + platformHeight &&
+        doodle.y + doodle.height > platform.y
+      ) {
+        // reset doodle position so it's on top of the platform
+        doodle.y = platform.y - doodle.height;
+        doodle.dy = bounceVelocity;
+        score += 10; // Increase score when jumping on a platform
+        jumpSound.play(); // Play jump sound effect
+      }
+    });
+
+    // draw doodle
+    context.drawImage(doodleImage, doodle.x, doodle.y, doodle.width, doodle.height);
+
+    prevDoodleY = doodle.y;
+
+    // remove any platforms that have gone offscreen
+    platforms = platforms.filter(function(platform) {
+      return platform.y < canvas.height;
+    });
+
+    // Check if doodle falls below canvas
+    if (doodle.y > canvas.height) {
+      gameRunning = false;
+      gameOver();
+    }
+
+    // Update score display
+    scoreDisplay.textContent = `Score: ${score}`;
+    scoreDisplay.style.display = 'block'; // Ensure scoreboard is visible
+
+    // Update level display
+    levelDisplay.textContent = `Level: ${level}`;
+    levelDisplay.style.display = 'block'; // Ensure level display is visible
+
+    // Check for level up (e.g., every 100 points)
+    if (score >= level * 100) {
+      level++;
+      // Increase game difficulty (adjust parameters like min/maxPlatformSpace, gravity, etc.)
+    }
+  }
+
+  function gameOver() {
+    gameOverDiv.style.display = 'block';
+    playAgainDiv.style.display = 'block';
+    gameOverSound.play(); // Play game over sound effect
+  }
+
+  // Start a new game when play again button is clicked
+  playAgainDiv.addEventListener('click', function() {
+    // Reload the page to start a new game
+    location.reload();
+  });
+
+  // Event listeners for game buttons
+  rulesButton.addEventListener('click', function() {
+    rulesModal.style.display = "block";
+  });
+
+  playGameButton.addEventListener('click', function() {
+    // Hide game buttons and show canvas
+    document.querySelector('.gameButtons').style.display = 'none';
+    canvas.style.display = 'block';
+    scoreDisplay.style.display = 'block'; // Ensure scoreboard is visible
+    gameRunning = true; // Start the game loop
+    requestAnimationFrame(loop);
+  });
+
+  // When the user clicks on <span> (x), close the modal
+  closeBtn.onclick = function() {
+    rulesModal.style.display = "none";
+  }
+
+  // When the user clicks anywhere outside of the modal, close it
+  window.onclick = function(event) {
+    if (event.target == rulesModal) {
+      rulesModal.style.display = "none";
+    }
+  }
+
+  // Event listeners for keydown and keyup events to handle left and right movement
+  document.addEventListener('keydown', function(event) {
+    if (event.key === 'ArrowLeft') {
+      keyLeft = true;
+    } else if (event.key === 'ArrowRight') {
+      keyRight = true;
+    }
+  });
+
+  document.addEventListener('keyup', function(event) {
+    if (event.key === 'ArrowLeft') {
+      keyLeft = false;
+    } else if (event.key === 'ArrowRight') {
+      keyRight = false;
+    }
+  });
+};
+doodleImage.src = 'man.png'; // Path to your man jumping image
+</script>
+</body>
+</html>
